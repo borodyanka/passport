@@ -1,0 +1,14 @@
+# Public Telegram webhook has its own Telegram secret-token validation.
+[functions.telegram-webhook]
+verify_jwt = false
+
+# Booking and availability are public functions, protected by server-side validation.
+[functions.create-booking]
+verify_jwt = false
+
+[functions.available-slots]
+verify_jwt = false
+
+# Staff function validates the Supabase JWT itself and checks the staff allow-list.
+[functions.staff-action]
+verify_jwt = false
