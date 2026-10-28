@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { CalendarDays, Clock3, Bell, ShieldCheck, ListOrdered, ArrowRight, RefreshCw, Send, CalendarCheck, Users, Info, LogIn, LogOut, ExternalLink } from 'lucide-react';
+import { CalendarDays, Clock3, Bell, ShieldCheck, ListOrdered, ArrowRight, RefreshCw, Send, CalendarCheck, Users, Info, LogIn, LogOut, ExternalLink, AlertTriangle } from 'lucide-react';
 import { SERVICES, OFFICE, STATUS_LABELS } from './config.js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -35,16 +35,16 @@ export default function App() {
   const [publicQueue, setPublicQueue] = useState([]);
   const [staffQueue, setStaffQueue] = useState([]);
   const [staffDate, setStaffDate] = useState(kyivDate());
+  
+  // Стан роботи системи на вибраний день
+  const [dayStatus, setDayStatus] = useState({ isWorking: true, reason: '' });
+  const [statusReasonInput, setStatusReasonInput] = useState('');
+  const [statusLoading, setStatusLoading] = useState(false);
+
   const [form, setForm] = useState({ 
-    full_name: '', 
-    phone: '', 
-    telegram_username: '', 
-    telegram_code: '', 
-    service: SERVICES[0], 
-    visit_date: kyivDate(), 
-    booking_type: 'scheduled', 
-    appointment_time: '', 
-    notes: '' 
+    full_name: '', phone: '', telegram_username: '', telegram_code: '', 
+    service: SERVICES[0], visit_date: kyivDate(), booking_type: 'scheduled', 
+    appointment_time: '', notes: '' 
   });
   const [receipt, setReceipt] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -65,10 +65,44 @@ export default function App() {
       body: JSON.stringify(body) 
     });
     let payload = {};
-    try { payload = await response.json(); } catch { /* server error can return non-JSON */ }
+    try { payload = await response.json(); } catch { /* ignore */ }
     if (!response.ok) throw new Error(payload.error || 'Помилка серверної функції.');
     return payload;
   }, []);
+
+  const loadDayStatus = useCallback(async (date) => {
+    if (!supabase) return;
+    const { data, error } = await supabase.from('system_status').select('is_working, reason').eq('date', date).single();
+    if (data) {
+      setDayStatus({ isWorking: data.is_working, reason: data.reason || '' });
+      setStatusReasonInput(data.reason || '');
+    } else {
+      setDayStatus({ isWorking: true, reason: '' });
+      setStatusReasonInput('');
+    }
+  }, []);
+
+  const updateDayStatus = async (isWorking) => {
+    if (!isWorking && !statusReasonInput.trim()) {
+      setError('Вкажіть причину зупинки роботи (напр., "Не працює сервер").');
+      return;
+    }
+    setError(''); setMessage(''); setStatusLoading(true);
+    const { error: dbError } = await supabase.from('system_status').upsert({
+      date: staffDate,
+      is_working: isWorking,
+      reason: isWorking ? null : statusReasonInput.trim(),
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'date' });
+    
+    setStatusLoading(false);
+    if (dbError) {
+      setError('Помилка оновлення статусу: ' + dbError.message);
+    } else {
+      setMessage(isWorking ? 'Прийом відновлено.' : 'Прийом зупинено. Сповіщення на сайті оновлено.');
+      loadDayStatus(staffDate);
+    }
+  };
 
   const loadSlots = useCallback(async (date) => {
     if (!SLOTS_URL) { setSlots([]); return; }
@@ -95,13 +129,24 @@ export default function App() {
     setStaffLoading(false);
   }, [staffDate]);
 
-  useEffect(() => { if (mode === 'scheduled') loadSlots(form.visit_date); }, [mode, form.visit_date, loadSlots]);
+  useEffect(() => { 
+    if (mode === 'scheduled') loadSlots(form.visit_date); 
+    loadDayStatus(form.visit_date);
+  }, [mode, form.visit_date, loadSlots, loadDayStatus]);
+  
   useEffect(() => { if (!supabase) return undefined; supabase.auth.getSession().then(({ data }) => setSession(data.session)); const { data } = supabase.auth.onAuthStateChange((_event, value) => setSession(value)); return () => data.subscription.unsubscribe(); }, []);
   useEffect(() => { loadPublicQueue(); const timer = setInterval(() => loadPublicQueue(), 20000); return () => clearInterval(timer); }, [loadPublicQueue]);
-  useEffect(() => { if (session && tab === 'staff') loadStaffQueue(); }, [session, tab, staffDate, loadStaffQueue]);
+  
+  useEffect(() => { 
+    if (session && tab === 'staff') {
+      loadStaffQueue();
+      loadDayStatus(staffDate);
+    }
+  }, [session, tab, staffDate, loadStaffQueue, loadDayStatus]);
 
   async function submitBooking(event) {
     event.preventDefault(); setError(''); setMessage(''); setReceipt(null);
+    if (!dayStatus.isWorking) return;
     if (configMissing()) { setError('Сайт ще не підключено до Supabase. Виконайте налаштування з README.md.'); return; }
     if (form.full_name.trim().length < 3 || form.phone.trim().length < 7) { setError('Вкажіть повне ПІБ та коректний номер телефону.'); return; }
     if (form.booking_type === 'scheduled' && !form.appointment_time) { setError('Оберіть вільний час прийому.'); return; }
@@ -110,15 +155,13 @@ export default function App() {
     setBusy(true);
     try {
       const payload = await invoke(CREATE_URL, { 
-        ...form, 
-        booking_type: mode, 
-        visit_date: form.visit_date, 
+        ...form, booking_type: mode, visit_date: form.visit_date, 
         appointment_time: mode === 'scheduled' ? form.appointment_time : null, 
         telegram_username: form.telegram_username.trim().replace(/^@/, '').slice(0, 64) || null, 
         telegram_code: form.telegram_code.trim().toUpperCase() || null 
       });
       setReceipt(payload);
-      setMessage(payload.telegram_notified ? 'Запис створено. Telegram-підтвердження надіслано.' : payload.telegram_linked ? 'Запис створено, але Telegram-підтвердження не вдалося доставити. Перевірте налаштування бота.' : 'Запис створено. Для Telegram-сповіщень відкрийте бота, надішліть /start і введіть код у форму під час наступного запису.');
+      setMessage(payload.telegram_notified ? 'Запис створено. Telegram-підтвердження надіслано.' : payload.telegram_linked ? 'Запис створено, але Telegram-підтвердження не вдалося доставити. Перевірте налаштування бота.' : 'Запис створено. Для Telegram-сповіщень відкрийте бота, надішліть /start і введіть код у форму.');
       await loadPublicQueue(form.visit_date);
       if (mode === 'live') setForm(old => ({ ...old, full_name: '', phone: '', telegram_username: '', telegram_code: '', notes: '' }));
     } catch (e) { setError(e.message || 'Не вдалося створити запис.'); }
@@ -150,10 +193,7 @@ export default function App() {
       <header className="header">
         <div className="brand">
           <img className="crest" src={`${basePath}gerb-borodianka.png`} alt={`Герб ${OFFICE.subtitle}`} />
-          <div>
-            <span className="overline">{OFFICE.subtitle}</span>
-            <h1>{OFFICE.title}</h1>
-          </div>
+          <div><span className="overline">{OFFICE.subtitle}</span><h1>{OFFICE.title}</h1></div>
         </div>
         <div className="online"><span /> Онлайн-запис</div>
       </header>
@@ -180,96 +220,79 @@ export default function App() {
               <div className="symbol"><CalendarDays /></div>
               <div><h3>Новий запис</h3><p>Оберіть формат прийому та заповніть поля</p></div>
             </div>
+
+            {!dayStatus.isWorking && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '1.25rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
+                <h4 style={{ margin: '0 0 0.5rem 0', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <AlertTriangle size={20} /> Запис на {formatDate(form.visit_date)} тимчасово призупинено
+                </h4>
+                <p style={{ margin: '0', color: '#991b1b' }}><strong>Причина:</strong> {dayStatus.reason}</p>
+                <p style={{ margin: '0.5rem 0 0 0', color: '#7f1d1d', fontSize: '0.9rem' }}>Будь ласка, оберіть іншу дату або зачекайте на відновлення роботи системи.</p>
+              </div>
+            )}
+
             <div className="mode-switch">
-              <button className={mode === 'scheduled' ? 'active' : ''} onClick={() => { setMode('scheduled'); updateForm('booking_type', 'scheduled'); }}>
+              <button disabled={!dayStatus.isWorking} className={mode === 'scheduled' ? 'active' : ''} onClick={() => { setMode('scheduled'); updateForm('booking_type', 'scheduled'); }}>
                 <CalendarCheck size={18} /> На конкретний час
               </button>
-              <button className={mode === 'live' ? 'active' : ''} onClick={() => { setMode('live'); updateForm('booking_type', 'live'); updateForm('visit_date', kyivDate()); }}>
+              <button disabled={!dayStatus.isWorking} className={mode === 'live' ? 'active' : ''} onClick={() => { setMode('live'); updateForm('booking_type', 'live'); updateForm('visit_date', kyivDate()); }}>
                 <ListOrdered size={18} /> Жива черга сьогодні
               </button>
             </div>
+            
             <form onSubmit={submitBooking}>
               <div className="form-grid">
-                <label>
-                  ПІБ повністю *
-                  <input required autoComplete="name" maxLength="150" value={form.full_name} onChange={e => updateForm('full_name', e.target.value)} placeholder="Прізвище Ім’я По батькові" />
-                </label>
-                <label>
-                  Номер телефону *
-                  <input required type="tel" autoComplete="tel" maxLength="30" value={form.phone} onChange={e => updateForm('phone', e.target.value)} placeholder="+380…" />
-                </label>
+                <label>ПІБ повністю *<input required disabled={!dayStatus.isWorking} autoComplete="name" maxLength="150" value={form.full_name} onChange={e => updateForm('full_name', e.target.value)} placeholder="Прізвище Ім’я По батькові" /></label>
+                <label>Номер телефону *<input required disabled={!dayStatus.isWorking} type="tel" autoComplete="tel" maxLength="30" value={form.phone} onChange={e => updateForm('phone', e.target.value)} placeholder="+380…" /></label>
 
-                <label>
-                  Послуга *
-                  <select value={form.service} onChange={e => updateForm('service', e.target.value)}>
+                <label>Послуга *
+                  <select disabled={!dayStatus.isWorking} value={form.service} onChange={e => updateForm('service', e.target.value)}>
                     {SERVICES.map(item => <option key={item} value={item}>{item}</option>)}
                   </select>
                 </label>
-                <label>
-                  Дата прийому *
+                <label>Дата прийому *
                   <input type="date" required min={kyivDate()} disabled={mode === 'live'} value={form.visit_date} onChange={e => updateForm('visit_date', e.target.value)} />
                   {mode === 'live' && <small>Для живої черги використовується поточна дата.</small>}
                 </label>
 
                 {mode === 'scheduled' ? (
-                  <label className="slot-label">
-                    Вільний час *
-                    <select required disabled={slotsLoading || slots.length === 0} value={form.appointment_time} onChange={e => updateForm('appointment_time', e.target.value)}>
-                      <option value="">{slotsLoading ? 'Завантажуємо вільні години…' : slots.length ? 'Оберіть час' : 'Немає вільного часу'}</option>
-                      {slots.map(t => <option key={t} value={t}>{t}</option>)}
+                  <label className="slot-label">Вільний час *
+                    <select required disabled={!dayStatus.isWorking || slotsLoading || slots.length === 0} value={form.appointment_time} onChange={e => updateForm('appointment_time', e.target.value)}>
+                      <option value="">{!dayStatus.isWorking ? 'Прийом зупинено' : slotsLoading ? 'Завантажуємо години…' : slots.length ? 'Оберіть час' : 'Немає вільного часу'}</option>
+                      {dayStatus.isWorking && slots.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                     <small>Слот резервується на сервері; одночасне бронювання одного часу не допускається.</small>
                   </label>
-                ) : (
-                  <div></div>
-                )}
-                <label>
-                  Коментар до звернення (необов’язково)
-                  <input maxLength="300" value={form.notes} onChange={e => updateForm('notes', e.target.value)} placeholder="Коротко уточніть запит, без номерів документів" />
+                ) : (<div></div>)}
+                <label>Коментар до звернення (необов’язково)
+                  <input disabled={!dayStatus.isWorking} maxLength="300" value={form.notes} onChange={e => updateForm('notes', e.target.value)} placeholder="Коротко уточніть запит" />
                 </label>
               </div>
 
-              {/* ЗРОЗУМІЛИЙ ТА ШИРОКИЙ БЛОК ДЛЯ ТЕЛЕГРАМУ */}
-              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', padding: '1.25rem', borderRadius: '8px', marginTop: '1.5rem', marginBottom: '1.5rem' }}>
+              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', padding: '1.25rem', borderRadius: '8px', margin: '1.5rem 0', opacity: dayStatus.isWorking ? 1 : 0.6 }}>
                 <h4 style={{ margin: '0 0 0.75rem 0', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
                   <Bell size={20} /> Обов'язкове підключення сповіщень
                 </h4>
                 <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.95rem', color: '#0c4a6e', lineHeight: '1.5' }}>
-                  Щоб ми могли надіслати вам номер черги та сповістити, коли підійде ваш час, <strong>необхідно підключити нашого Telegram-бота</strong>. <br/><br/>
+                  Щоб ми могли надіслати вам номер черги та сповістити про зміну розкладу (напр., раптове відключення систем), <strong>необхідно підключити нашого Telegram-бота</strong>.<br/><br/>
                   1. Натисніть кнопку нижче, щоб відкрити бота.<br/>
                   2. Натисніть <strong>Розпочати (або /start)</strong> у боті.<br/>
                   3. Бот надішле вам одноразовий код — скопіюйте його у форму нижче разом із вашим Username.
                 </p>
                 {BOT_LINK && (
-                  <a href={BOT_LINK} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: '#0ea5e9', color: '#fff', padding: '0.75rem 1.5rem', borderRadius: '6px', textDecoration: 'none', fontWeight: '600', width: '100%', boxSizing: 'border-box' }}>
+                  <a href={BOT_LINK} target="_blank" rel="noreferrer" style={{ pointerEvents: dayStatus.isWorking ? 'auto' : 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: '#0ea5e9', color: '#fff', padding: '0.75rem 1.5rem', borderRadius: '6px', textDecoration: 'none', fontWeight: '600', width: '100%', boxSizing: 'border-box' }}>
                     <Send size={18} /> Відкрити Telegram-бота <ExternalLink size={16} />
                   </a>
                 )}
               </div>
 
-              {/* ПОЛЯ ТЕЛЕГРАМУ (ОБОВ'ЯЗКОВІ) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <label className="full-width">
-                  Telegram username *
-                  <input
-                    required
-                    value={form.telegram_username}
-                    onChange={e => updateForm('telegram_username', e.target.value)}
-                    placeholder="@username"
-                  />
+                <label className="full-width">Telegram username *
+                  <input required disabled={!dayStatus.isWorking} value={form.telegram_username} onChange={e => updateForm('telegram_username', e.target.value)} placeholder="@username" />
                   <small>Ваш нікнейм у Telegram. Необхідний для ідентифікації.</small>
                 </label>
-
-                <label className="full-width">
-                  Код прив’язки Telegram *
-                  <input
-                    required
-                    autoCapitalize="characters"
-                    maxLength="12"
-                    value={form.telegram_code}
-                    onChange={e => updateForm('telegram_code', e.target.value.toUpperCase())}
-                    placeholder="Напр. K7M4P9Q2"
-                  />
+                <label className="full-width">Код прив’язки Telegram *
+                  <input required disabled={!dayStatus.isWorking} autoCapitalize="characters" maxLength="12" value={form.telegram_code} onChange={e => updateForm('telegram_code', e.target.value.toUpperCase())} placeholder="Напр. K7M4P9Q2" />
                   <small>Введіть сюди код, який ви щойно отримали від бота.</small>
                 </label>
               </div>
@@ -282,11 +305,11 @@ export default function App() {
               {error && <div className="alert error" role="alert">{error}</div>}
               {message && <div className="alert success" role="status">{message}</div>}
 
-              <button className="primary" type="submit" disabled={busy || (mode === 'scheduled' && !slots.length)}>
+              <button className="primary" type="submit" disabled={!dayStatus.isWorking || busy || (mode === 'scheduled' && !slots.length)}>
                 {busy ? 'Створюємо запис…' : mode === 'live' ? 'Отримати номер живої черги' : 'Підтвердити запис'} <ArrowRight size={18} />
               </button>
             </form>
-
+            
             {receipt && (
               <div className="receipt">
                 <div className="receipt-icon"><CalendarCheck /></div>
@@ -343,12 +366,46 @@ export default function App() {
               <>
                 <div className="staff-tools">
                   <span>Ви увійшли як працівник</span>
-                  <label>Дата<input type="date" value={staffDate} onChange={e => setStaffDate(e.target.value)} /></label>
-                  <button className="icon-button" onClick={() => loadStaffQueue()}><RefreshCw size={16} /> Оновити</button>
+                  <label>Дата<input type="date" value={staffDate} onChange={e => { setStaffDate(e.target.value); loadDayStatus(e.target.value); }} /></label>
+                  <button className="icon-button" onClick={() => { loadStaffQueue(); loadDayStatus(staffDate); }}><RefreshCw size={16} /> Оновити</button>
                   <button className="quiet-button" onClick={() => supabase.auth.signOut()}><LogOut size={16} /> Вийти</button>
                 </div>
+
+                {/* БЛОК КЕРУВАННЯ СТАТУСОМ РОБОТИ ДЛЯ ПРАЦІВНИКА */}
+                <div style={{ background: '#f8fafc', padding: '1.25rem', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '1.5rem' }}>
+                  <h4 style={{ margin: '0 0 0.75rem 0', color: '#334155' }}>
+                    Статус прийому на {formatDate(staffDate)}
+                  </h4>
+                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                    <div style={{ flex: '1 1 300px' }}>
+                      <input 
+                        type="text" 
+                        placeholder="Вкажіть причину, якщо зупиняєте прийом (напр., не працює система)" 
+                        value={statusReasonInput} 
+                        onChange={(e) => setStatusReasonInput(e.target.value)} 
+                        style={{ width: '100%', marginBottom: 0 }}
+                      />
+                    </div>
+                    {dayStatus.isWorking ? (
+                      <button className="cancel-action" onClick={() => updateDayStatus(false)} disabled={statusLoading}>
+                        Зупинити прийом
+                      </button>
+                    ) : (
+                      <button className="primary" onClick={() => updateDayStatus(true)} disabled={statusLoading}>
+                        Відновити прийом
+                      </button>
+                    )}
+                  </div>
+                  {!dayStatus.isWorking && (
+                    <div style={{ marginTop: '0.75rem', color: '#b91c1c', fontSize: '0.9rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <AlertTriangle size={16} /> Прийом зупинено. Користувачі не можуть записатися.
+                    </div>
+                  )}
+                </div>
+
                 {error && <div className="alert error">{error}</div>}
                 {message && <div className="alert success">{message}</div>}
+                
                 {staffLoading ? (
                   <div className="empty">Завантаження черги…</div>
                 ) : staffQueue.length === 0 ? (
@@ -375,7 +432,6 @@ export default function App() {
                     ))}
                   </div>
                 )}
-                <div className="staff-note"><ShieldCheck size={16} /> Не надсилайте ПІБ і телефони в публічні чати. Доступ до панелі надавайте лише уповноваженим працівникам.</div>
               </>
             )}
           </section>
@@ -386,11 +442,7 @@ export default function App() {
             <Clock3 />
             <h4>Графік роботи</h4>
             <p>{OFFICE.hours}</p>
-            {OFFICE.daysOff && (
-              <small style={{ display: 'block', marginTop: '6px', color: '#64748b' }}>
-                {OFFICE.daysOff}
-              </small>
-            )}
+            {OFFICE.daysOff && <small style={{ display: 'block', marginTop: '6px', color: '#64748b' }}>{OFFICE.daysOff}</small>}
           </article>
           <article className="info-card">
             <Bell />
@@ -399,10 +451,6 @@ export default function App() {
           </article>
         </section>
 
-        <section className="data-notice">
-          <Info size={17} />
-          <p><strong>Повідомлення про дані.</strong> Перед офіційним запуском рада має затвердити текст повідомлення про обробку персональних даних, визначити строк зберігання та відповідальну особу.</p>
-        </section>
       </main>
 
       <footer>
