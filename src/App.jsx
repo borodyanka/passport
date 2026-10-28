@@ -150,7 +150,7 @@ export default function App() {
     if (configMissing()) { setError('Сайт ще не підключено до Supabase. Виконайте налаштування з README.md.'); return; }
     if (form.full_name.trim().length < 3 || form.phone.trim().length < 7) { setError('Вкажіть повне ПІБ та коректний номер телефону.'); return; }
     if (form.booking_type === 'scheduled' && !form.appointment_time) { setError('Оберіть вільний час прийому.'); return; }
-    if (!form.telegram_username.trim() || !form.telegram_code.trim()) { setError('Підключення Telegram обов’язкове. Вкажіть ваш username та код прив’язки з бота.'); return; }
+    if (!form.telegram_code.trim()) { setError('Підключення Telegram обов’язкове. Введіть код прив’язки, отриманий від бота.'); return; }
     
     setBusy(true);
     try {
