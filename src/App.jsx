@@ -188,35 +188,129 @@ export default function App() {
             </div>
             <form onSubmit={submitBooking}>
               <div className="form-grid">
-                <label>ПІБ повністю *<input required autoComplete="name" maxLength="150" value={form.full_name} onChange={e => updateForm('full_name', e.target.value)} placeholder="Прізвище Ім’я По батькові" /></label>
-                <label>Номер телефону *<input required type="tel" autoComplete="tel" maxLength="30" value={form.phone} onChange={e => updateForm('phone', e.target.value)} placeholder="+380…" /></label>
-                <label>Послуга *
+                {/* 1. ПІБ та Номер телефону */}
+                <label>
+                  ПІБ повністю *
+                  <input
+                    required
+                    autoComplete="name"
+                    maxLength="150"
+                    value={form.full_name}
+                    onChange={e => updateForm('full_name', e.target.value)}
+                    placeholder="Прізвище Ім’я По батькові"
+                  />
+                </label>
+                <label>
+                  Номер телефону *
+                  <input
+                    required
+                    type="tel"
+                    autoComplete="tel"
+                    maxLength="30"
+                    value={form.phone}
+                    onChange={e => updateForm('phone', e.target.value)}
+                    placeholder="+380…"
+                  />
+                </label>
+
+                {/* 2. Послуга та Дата прийому */}
+                <label>
+                  Послуга *
                   <select value={form.service} onChange={e => updateForm('service', e.target.value)}>
                     {SERVICES.map(item => <option key={item} value={item}>{item}</option>)}
                   </select>
                 </label>
-                <label>Дата прийому *<input type="date" required min={kyivDate()} disabled={mode === 'live'} value={form.visit_date} onChange={e => updateForm('visit_date', e.target.value)} />{mode === 'live' && <small>Для живої черги використовується поточна дата.</small>}</label>
-                {mode === 'scheduled' && (
-                  <label className="slot-label">Вільний час *
-                    <select required disabled={slotsLoading || slots.length === 0} value={form.appointment_time} onChange={e => updateForm('appointment_time', e.target.value)}>
-                      <option value="">{slotsLoading ? 'Завантажуємо вільні години…' : slots.length ? 'Оберіть час' : 'Немає вільного часу'}</option>
+                <label>
+                  Дата прийому *
+                  <input
+                    type="date"
+                    required
+                    min={kyivDate()}
+                    disabled={mode === 'live'}
+                    value={form.visit_date}
+                    onChange={e => updateForm('visit_date', e.target.value)}
+                  />
+                  {mode === 'live' && <small>Для живої черги використовується поточна дата.</small>}
+                </label>
+
+                {/* 3. Вільний час та Коментар */}
+                {mode === 'scheduled' ? (
+                  <label className="slot-label">
+                    Вільний час *
+                    <select
+                      required
+                      disabled={slotsLoading || slots.length === 0}
+                      value={form.appointment_time}
+                      onChange={e => updateForm('appointment_time', e.target.value)}
+                    >
+                      <option value="">
+                        {slotsLoading ? 'Завантажуємо вільні години…' : slots.length ? 'Оберіть час' : 'Немає вільного часу'}
+                      </option>
                       {slots.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                     <small>Слот резервується на сервері; одночасне бронювання одного часу не допускається.</small>
                   </label>
+                ) : (
+                  <div></div>
                 )}
-                <label>Telegram username *<input required value={form.telegram_username} onChange={e => updateForm('telegram_username', e.target.value)} placeholder="@username" /><small>Username корисний для працівника, але сам по собі не дозволяє боту написати вам.</small></label>
-                <label>Код прив’язки Telegram *<input required autoCapitalize="characters" maxLength="12" value={form.telegram_code} onChange={e => updateForm('telegram_code', e.target.value.toUpperCase())} placeholder="Напр. K7M4P9Q2" /><small>Відкрийте бота й надішліть /start. Введіть одноразовий код, який бот надішле у відповідь.</small></label>
-                <label className="full-width">Коментар до звернення (необов’язково)<input maxLength="300" value={form.notes} onChange={e => updateForm('notes', e.target.value)} placeholder="Коротко уточніть запит, без номерів документів" /></label>
+                <label>
+                  Коментар до звернення (необов’язково)
+                  <input
+                    maxLength="300"
+                    value={form.notes}
+                    onChange={e => updateForm('notes', e.target.value)}
+                    placeholder="Коротко уточніть запит, без номерів документів"
+                  />
+                </label>
               </div>
-              {BOT_LINK && <a className="bot-link" href={BOT_LINK} target="_blank" rel="noreferrer"><Send size={16} /> Відкрити Telegram-бота <ExternalLink size={14} /></a>}
-              <div className="privacy"><ShieldCheck size={18} /><span>ПІБ, телефон і деталі запиту бачать лише авторизовані працівники. У відкритій черзі показуються тільки номер, час і статус. Не вводьте серію/номер паспорта чи інші зайві чутливі дані.</span></div>
+
+              {/* 4. Посилання на Telegram-бота перед блоком полів */}
+              {BOT_LINK && (
+                <div style={{ marginTop: '1.25rem' }}>
+                  <a className="bot-link" href={BOT_LINK} target="_blank" rel="noreferrer">
+                    <Send size={16} /> Відкрити Telegram-бота <ExternalLink size={14} />
+                  </a>
+                </div>
+              )}
+
+              {/* 5. Поля Telegram (необов'язкові) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.25rem' }}>
+                <label className="full-width">
+                  Telegram username (необов’язково)
+                  <input
+                    value={form.telegram_username}
+                    onChange={e => updateForm('telegram_username', e.target.value)}
+                    placeholder="@username"
+                  />
+                  <small>Username корисний для працівника, але сам по собі не дозволяє боту написати вам.</small>
+                </label>
+
+                <label className="full-width">
+                  Код прив’язки Telegram (необов’язково)
+                  <input
+                    autoCapitalize="characters"
+                    maxLength="12"
+                    value={form.telegram_code}
+                    onChange={e => updateForm('telegram_code', e.target.value.toUpperCase())}
+                    placeholder="Напр. K7M4P9Q2"
+                  />
+                  <small>Відкрийте бота й надішліть /start. Введіть одноразовий код, який бот надішле у відповідь.</small>
+                </label>
+              </div>
+
+              <div className="privacy" style={{ marginTop: '1.25rem' }}>
+                <ShieldCheck size={18} />
+                <span>ПІБ, телефон і деталі запиту бачать лише авторизовані працівники. У відкритій черзі показуються тільки номер, час і статус. Не вводьте серію/номер паспорта чи інші зайві чутливі дані.</span>
+              </div>
+
               {error && <div className="alert error" role="alert">{error}</div>}
               {message && <div className="alert success" role="status">{message}</div>}
+
               <button className="primary" type="submit" disabled={busy || (mode === 'scheduled' && !slots.length)}>
                 {busy ? 'Створюємо запис…' : mode === 'live' ? 'Отримати номер живої черги' : 'Підтвердити запис'} <ArrowRight size={18} />
               </button>
             </form>
+
             {receipt && (
               <div className="receipt">
                 <div className="receipt-icon"><CalendarCheck /></div>
@@ -316,9 +410,11 @@ export default function App() {
             <Clock3 />
             <h4>Графік роботи</h4>
             <p>{OFFICE.hours}</p>
-            <small style={{ display: 'block', marginTop: '6px', color: '#64748b' }}>
-              {OFFICE.daysOff}
+            {OFFICE.daysOff && (
+              <small style={{ display: 'block', marginTop: '6px', color: '#64748b' }}>
+                {OFFICE.daysOff}
               </small>
+            )}
           </article>
           <article className="info-card">
             <Bell />
