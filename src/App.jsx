@@ -105,6 +105,8 @@ export default function App() {
     if (configMissing()) { setError('Сайт ще не підключено до Supabase. Виконайте налаштування з README.md.'); return; }
     if (form.full_name.trim().length < 3 || form.phone.trim().length < 7) { setError('Вкажіть повне ПІБ та коректний номер телефону.'); return; }
     if (form.booking_type === 'scheduled' && !form.appointment_time) { setError('Оберіть вільний час прийому.'); return; }
+    if (!form.telegram_username.trim() || !form.telegram_code.trim()) { setError('Підключення Telegram обов’язкове. Вкажіть ваш username та код прив’язки з бота.'); return; }
+    
     setBusy(true);
     try {
       const payload = await invoke(CREATE_URL, { 
@@ -188,32 +190,15 @@ export default function App() {
             </div>
             <form onSubmit={submitBooking}>
               <div className="form-grid">
-                {/* 1. ПІБ та Номер телефону */}
                 <label>
                   ПІБ повністю *
-                  <input
-                    required
-                    autoComplete="name"
-                    maxLength="150"
-                    value={form.full_name}
-                    onChange={e => updateForm('full_name', e.target.value)}
-                    placeholder="Прізвище Ім’я По батькові"
-                  />
+                  <input required autoComplete="name" maxLength="150" value={form.full_name} onChange={e => updateForm('full_name', e.target.value)} placeholder="Прізвище Ім’я По батькові" />
                 </label>
                 <label>
                   Номер телефону *
-                  <input
-                    required
-                    type="tel"
-                    autoComplete="tel"
-                    maxLength="30"
-                    value={form.phone}
-                    onChange={e => updateForm('phone', e.target.value)}
-                    placeholder="+380…"
-                  />
+                  <input required type="tel" autoComplete="tel" maxLength="30" value={form.phone} onChange={e => updateForm('phone', e.target.value)} placeholder="+380…" />
                 </label>
 
-                {/* 2. Послуга та Дата прийому */}
                 <label>
                   Послуга *
                   <select value={form.service} onChange={e => updateForm('service', e.target.value)}>
@@ -222,30 +207,15 @@ export default function App() {
                 </label>
                 <label>
                   Дата прийому *
-                  <input
-                    type="date"
-                    required
-                    min={kyivDate()}
-                    disabled={mode === 'live'}
-                    value={form.visit_date}
-                    onChange={e => updateForm('visit_date', e.target.value)}
-                  />
+                  <input type="date" required min={kyivDate()} disabled={mode === 'live'} value={form.visit_date} onChange={e => updateForm('visit_date', e.target.value)} />
                   {mode === 'live' && <small>Для живої черги використовується поточна дата.</small>}
                 </label>
 
-                {/* 3. Вільний час та Коментар */}
                 {mode === 'scheduled' ? (
                   <label className="slot-label">
                     Вільний час *
-                    <select
-                      required
-                      disabled={slotsLoading || slots.length === 0}
-                      value={form.appointment_time}
-                      onChange={e => updateForm('appointment_time', e.target.value)}
-                    >
-                      <option value="">
-                        {slotsLoading ? 'Завантажуємо вільні години…' : slots.length ? 'Оберіть час' : 'Немає вільного часу'}
-                      </option>
+                    <select required disabled={slotsLoading || slots.length === 0} value={form.appointment_time} onChange={e => updateForm('appointment_time', e.target.value)}>
+                      <option value="">{slotsLoading ? 'Завантажуємо вільні години…' : slots.length ? 'Оберіть час' : 'Немає вільного часу'}</option>
                       {slots.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                     <small>Слот резервується на сервері; одночасне бронювання одного часу не допускається.</small>
@@ -255,46 +225,52 @@ export default function App() {
                 )}
                 <label>
                   Коментар до звернення (необов’язково)
-                  <input
-                    maxLength="300"
-                    value={form.notes}
-                    onChange={e => updateForm('notes', e.target.value)}
-                    placeholder="Коротко уточніть запит, без номерів документів"
-                  />
+                  <input maxLength="300" value={form.notes} onChange={e => updateForm('notes', e.target.value)} placeholder="Коротко уточніть запит, без номерів документів" />
                 </label>
               </div>
 
-              {/* 4. Посилання на Telegram-бота перед блоком полів */}
-              {BOT_LINK && (
-                <div style={{ marginTop: '1.25rem' }}>
-                  <a className="bot-link" href={BOT_LINK} target="_blank" rel="noreferrer">
-                    <Send size={16} /> Відкрити Telegram-бота <ExternalLink size={14} />
+              {/* ЗРОЗУМІЛИЙ ТА ШИРОКИЙ БЛОК ДЛЯ ТЕЛЕГРАМУ */}
+              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', padding: '1.25rem', borderRadius: '8px', marginTop: '1.5rem', marginBottom: '1.5rem' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
+                  <Bell size={20} /> Обов'язкове підключення сповіщень
+                </h4>
+                <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.95rem', color: '#0c4a6e', lineHeight: '1.5' }}>
+                  Щоб ми могли надіслати вам номер черги та сповістити, коли підійде ваш час, <strong>необхідно підключити нашого Telegram-бота</strong>. <br/><br/>
+                  1. Натисніть кнопку нижче, щоб відкрити бота.<br/>
+                  2. Натисніть <strong>Розпочати (або /start)</strong> у боті.<br/>
+                  3. Бот надішле вам одноразовий код — скопіюйте його у форму нижче разом із вашим Username.
+                </p>
+                {BOT_LINK && (
+                  <a href={BOT_LINK} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: '#0ea5e9', color: '#fff', padding: '0.75rem 1.5rem', borderRadius: '6px', textDecoration: 'none', fontWeight: '600', width: '100%', boxSizing: 'border-box' }}>
+                    <Send size={18} /> Відкрити Telegram-бота <ExternalLink size={16} />
                   </a>
-                </div>
-              )}
+                )}
+              </div>
 
-              {/* 5. Поля Telegram (необов'язкові) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.25rem' }}>
+              {/* ПОЛЯ ТЕЛЕГРАМУ (ОБОВ'ЯЗКОВІ) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <label className="full-width">
-                  Telegram username (необов’язково)
+                  Telegram username *
                   <input
+                    required
                     value={form.telegram_username}
                     onChange={e => updateForm('telegram_username', e.target.value)}
                     placeholder="@username"
                   />
-                  <small>Username корисний для працівника, але сам по собі не дозволяє боту написати вам.</small>
+                  <small>Ваш нікнейм у Telegram. Необхідний для ідентифікації.</small>
                 </label>
 
                 <label className="full-width">
-                  Код прив’язки Telegram (необов’язково)
+                  Код прив’язки Telegram *
                   <input
+                    required
                     autoCapitalize="characters"
                     maxLength="12"
                     value={form.telegram_code}
                     onChange={e => updateForm('telegram_code', e.target.value.toUpperCase())}
                     placeholder="Напр. K7M4P9Q2"
                   />
-                  <small>Відкрийте бота й надішліть /start. Введіть одноразовий код, який бот надішле у відповідь.</small>
+                  <small>Введіть сюди код, який ви щойно отримали від бота.</small>
                 </label>
               </div>
 
@@ -419,13 +395,13 @@ export default function App() {
           <article className="info-card">
             <Bell />
             <h4>Сповіщення Telegram</h4>
-            <p>Підтвердження запису, повідомлення працівнику про новий запис і повідомлення відвідувачу під час виклику. Для зв’язку спочатку запустіть бота.</p>
+            <p>Підтвердження запису, повідомлення працівнику про новий запис і повідомлення відвідувачу під час виклику.</p>
           </article>
         </section>
 
         <section className="data-notice">
           <Info size={17} />
-          <p><strong>Повідомлення про дані.</strong> Перед офіційним запуском рада має затвердити текст повідомлення про обробку персональних даних, визначити строк зберігання та відповідальну особу. Це стартовий програмний шаблон, який необхідно перевірити перед використанням із реальними даними громадян.</p>
+          <p><strong>Повідомлення про дані.</strong> Перед офіційним запуском рада має затвердити текст повідомлення про обробку персональних даних, визначити строк зберігання та відповідальну особу.</p>
         </section>
       </main>
 
