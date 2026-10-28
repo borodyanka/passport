@@ -287,9 +287,9 @@ export default function App() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <label className="full-width">Telegram username *
-                  <input required disabled={!dayStatus.isWorking} value={form.telegram_username} onChange={e => updateForm('telegram_username', e.target.value)} placeholder="@username" />
-                  <small>Ваш нікнейм у Telegram. Необхідний для ідентифікації.</small>
+                <label className="full-width">Telegram username (необов’язково)
+                  <input disabled={!dayStatus.isWorking} value={form.telegram_username} onChange={e => updateForm('telegram_username', e.target.value)} placeholder="@username" />
+                  <small>Якщо знаєте свій нікнейм — вкажіть його, або залиште поле порожнім.</small>
                 </label>
                 <label className="full-width">Код прив’язки Telegram *
                   <input required disabled={!dayStatus.isWorking} autoCapitalize="characters" maxLength="12" value={form.telegram_code} onChange={e => updateForm('telegram_code', e.target.value.toUpperCase())} placeholder="Напр. K7M4P9Q2" />
