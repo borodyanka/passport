@@ -316,6 +316,9 @@ export default function App() {
             <Clock3 />
             <h4>Графік роботи</h4>
             <p>{OFFICE.hours}</p>
+            <small style={{ display: 'block', marginTop: '6px', color: '#64748b' }}>
+              {OFFICE.daysOff}
+              </small>
           </article>
           <article className="info-card">
             <Bell />
