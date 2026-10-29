@@ -169,7 +169,7 @@
   box-shadow: 0 2px 4px rgba(2, 132, 199, 0.2);
 }
 
-/* БАНЕР ПОВІТРЯНОЇ ТРИВОГИ ТА ВІДЖЕТ */
+/* БАНЕР ПОВІТРЯНОЇ ТРИВОГИ */
 .air-alert-banner {
   background: linear-gradient(135deg, #dc2626, #991b1b);
   color: #ffffff;
@@ -217,19 +217,6 @@
   40%, 80% { transform: rotate(8deg); }
 }
 
-.info-grid-with-alert {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 20px;
-  margin: 24px 0;
-  align-items: start;
-}
-
-.alert-widget-container {
-  display: flex;
-  justify-content: center;
-}
-
 .status-warning-box {
   background: #fef2f2;
   border: 1px solid #fecaca;
@@ -245,8 +232,34 @@
   color: #7f1d1d !important;
 }
 
-@media (max-width: 900px) {
-  .info-grid-with-alert {
-    grid-template-columns: 1fr;
+/* РОЗТАШУВАННЯ ВІДЖЕТА ТРИВОГИ В ШАПЦІ (HERO) */
+.hero-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.hero-widget-box {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-left: 24px;
+}
+
+@media(max-width: 860px) {
+  .hero {
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    padding: 24px;
+  }
+  .hero-widget-box {
+    margin-left: 0;
+    width: 100%;
+  }
+  .hero-widget-box iframe {
+    width: 100% !important;
+    max-width: 320px;
   }
 }
