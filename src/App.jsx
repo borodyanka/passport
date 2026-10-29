@@ -332,7 +332,7 @@ export default function App() {
             <h2>Запишіться на прийом<br />у кілька кроків</h2>
             <p>Оберіть послугу, дату та доступний час або скористайтеся живою чергою. Telegram допоможе отримати підтвердження та сповіщення.</p>
           </div>
-          <div className="hero-art"><CalendarCheck size={48} /><span>1190</span></div>
+          <div className="hero-art"><CalendarCheck size={48} /><span>2026</span></div>
         </section>
 
         <nav className="tabs" aria-label="Розділи">
