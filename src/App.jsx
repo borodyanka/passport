@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { CalendarDays, Clock3, Bell, ShieldCheck, ListOrdered, ArrowRight, RefreshCw, Send, CalendarCheck, Users, Info, LogIn, LogOut, ExternalLink, AlertTriangle } from 'lucide-react';
+import { CalendarDays, Clock3, Bell, ShieldCheck, ListOrdered, ArrowRight, RefreshCw, Send, CalendarCheck, Users, Info, LogIn, LogOut, ExternalLink, AlertTriangle, Trash2 } from 'lucide-react';
 import { SERVICES, OFFICE, STATUS_LABELS } from './config.js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -36,6 +36,12 @@ export default function App() {
   const [staffQueue, setStaffQueue] = useState([]);
   const [staffDate, setStaffDate] = useState(kyivDate());
   
+  // Дані працівника
+  const [staffProfile, setStaffProfile] = useState({
+    name: 'Очеретяний Ярослав Романович',
+    role: 'Адміністратор системи'
+  });
+
   // Стан роботи системи на вибраний день
   const [dayStatus, setDayStatus] = useState({ isWorking: true, reason: '' });
   const [statusReasonInput, setStatusReasonInput] = useState('');
@@ -72,7 +78,7 @@ export default function App() {
 
   const loadDayStatus = useCallback(async (date) => {
     if (!supabase) return;
-    const { data, error } = await supabase.from('system_status').select('is_working, reason').eq('date', date).single();
+    const { data } = await supabase.from('system_status').select('is_working, reason').eq('date', date).single();
     if (data) {
       setDayStatus({ isWorking: data.is_working, reason: data.reason || '' });
       setStatusReasonInput(data.reason || '');
@@ -134,13 +140,40 @@ export default function App() {
     loadDayStatus(form.visit_date);
   }, [mode, form.visit_date, loadSlots, loadDayStatus]);
   
-  useEffect(() => { if (!supabase) return undefined; supabase.auth.getSession().then(({ data }) => setSession(data.session)); const { data } = supabase.auth.onAuthStateChange((_event, value) => setSession(value)); return () => data.subscription.unsubscribe(); }, []);
-  useEffect(() => { loadPublicQueue(); const timer = setInterval(() => loadPublicQueue(), 20000); return () => clearInterval(timer); }, [loadPublicQueue]);
+  useEffect(() => { 
+    if (!supabase) return undefined; 
+    supabase.auth.getSession().then(({ data }) => setSession(data.session)); 
+    const { data } = supabase.auth.onAuthStateChange((_event, value) => setSession(value)); 
+    return () => data.subscription.unsubscribe(); 
+  }, []);
+
+  useEffect(() => { 
+    loadPublicQueue(); 
+    const timer = setInterval(() => loadPublicQueue(), 20000); 
+    return () => clearInterval(timer); 
+  }, [loadPublicQueue]);
   
   useEffect(() => { 
     if (session && tab === 'staff') {
       loadStaffQueue();
       loadDayStatus(staffDate);
+
+      // Завантаження профілю працівника
+      if (session?.user?.id) {
+        supabase
+          .from('staff')
+          .select('display_name, role')
+          .eq('user_id', session.user.id)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (data && data.display_name) {
+              setStaffProfile({
+                name: data.display_name,
+                role: data.role || 'Працівник паспортного столу'
+              });
+            }
+          });
+      }
     }
   }, [session, tab, staffDate, loadStaffQueue, loadDayStatus]);
 
@@ -175,6 +208,12 @@ export default function App() {
     if (signInError) setError('Не вдалося увійти. Перевірте службову пошту та пароль.');
   }
 
+  const handleSignOut = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setSession(null);
+  };
+
   async function staffAction(id, action) {
     setError(''); setMessage('');
     if (!session?.access_token) { setError('Сесія завершилася. Увійдіть ще раз.'); return; }
@@ -183,6 +222,19 @@ export default function App() {
       setMessage(result.message || 'Статус оновлено.');
       await Promise.all([loadStaffQueue(staffDate), loadPublicQueue(staffDate)]);
     } catch (e) { setError(e.message); }
+  }
+
+  async function deleteAppointment(id) {
+    if (!window.confirm('Ви впевнені, що хочете безповоротно видалити цей запис із бази?')) return;
+    setError(''); setMessage('');
+    try {
+      const { error: delError } = await supabase.from('appointments').delete().eq('id', id);
+      if (delError) throw delError;
+      setMessage('Запис успішно видалено.');
+      await Promise.all([loadStaffQueue(staffDate), loadPublicQueue(staffDate)]);
+    } catch (e) {
+      setError('Не вдалося видалити запис: ' + e.message);
+    }
   }
 
   const filteredQueue = useMemo(() => publicQueue.filter(item => item.status !== 'cancelled'), [publicQueue]);
@@ -364,16 +416,38 @@ export default function App() {
               </form>
             ) : (
               <>
-                <div className="staff-profile-card">
-  <div className="staff-avatar">ЯО</div>
-  <div className="staff-info">
-    <div className="staff-name">Очеретяний Ярослав Романович</div>
-    <div className="staff-role">
-      <span className="staff-status-dot"></span>
-      Адміністратор системи
-    </div>
-  </div>
-</div>
+                {/* ВЕРХНЯ ПАНЕЛЬ: ПРОФІЛЬ ТА ІНСТРУМЕНТИ КЕРУВАННЯ */}
+                <div className="staff-tools" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                  <div className="staff-profile-card">
+                    <div className="staff-avatar">
+                      {staffProfile.name ? staffProfile.name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() : 'ЯО'}
+                    </div>
+                    <div className="staff-info">
+                      <div className="staff-name">{staffProfile.name}</div>
+                      <div className="staff-role">
+                        <span className="staff-status-dot"></span>
+                        {staffProfile.role}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <label style={{ margin: 0, minWidth: '150px' }}>
+                      <input 
+                        type="date" 
+                        value={staffDate} 
+                        onChange={e => { setStaffDate(e.target.value); loadStaffQueue(e.target.value); loadDayStatus(e.target.value); }} 
+                        style={{ padding: '8px 12px' }}
+                      />
+                    </label>
+                    <button className="icon-button" onClick={() => { loadStaffQueue(staffDate); loadDayStatus(staffDate); }} aria-label="Оновити список">
+                      <RefreshCw size={15} /> Оновити
+                    </button>
+                    <button className="quiet-button" onClick={handleSignOut} aria-label="Вийти з кабінету">
+                      <LogOut size={15} /> Вийти
+                    </button>
+                  </div>
+                </div>
 
                 {/* БЛОК КЕРУВАННЯ СТАТУСОМ РОБОТИ ДЛЯ ПРАЦІВНИКА */}
                 <div style={{ background: '#f8fafc', padding: '1.25rem', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '1.5rem' }}>
@@ -431,6 +505,9 @@ export default function App() {
                           <button disabled={item.status !== 'waiting'} onClick={() => staffAction(item.id, 'call')}>Викликати</button>
                           <button disabled={item.status !== 'serving'} onClick={() => staffAction(item.id, 'complete')}>Завершити</button>
                           <button className="cancel-action" disabled={['completed', 'cancelled'].includes(item.status)} onClick={() => staffAction(item.id, 'cancel')}>Скасувати</button>
+                          <button className="cancel-action" style={{ background: '#fee2e2', color: '#dc2626' }} onClick={() => deleteAppointment(item.id)} title="Безповоротно видалити з бази">
+                            <Trash2 size={13} style={{ verticalAlign: 'middle', marginRight: '3px' }} /> Видалити
+                          </button>
                         </div>
                       </article>
                     ))}
