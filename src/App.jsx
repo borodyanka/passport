@@ -364,12 +364,16 @@ export default function App() {
               </form>
             ) : (
               <>
-                <div className="staff-tools">
-                  <span>Ви увійшли як працівник</span>
-                  <label>Дата<input type="date" value={staffDate} onChange={e => { setStaffDate(e.target.value); loadDayStatus(e.target.value); }} /></label>
-                  <button className="icon-button" onClick={() => { loadStaffQueue(); loadDayStatus(staffDate); }}><RefreshCw size={16} /> Оновити</button>
-                  <button className="quiet-button" onClick={() => supabase.auth.signOut()}><LogOut size={16} /> Вийти</button>
-                </div>
+                <div className="staff-profile-card">
+  <div className="staff-avatar">ЯО</div>
+  <div className="staff-info">
+    <div className="staff-name">Очеретяний Ярослав Романович</div>
+    <div className="staff-role">
+      <span className="staff-status-dot"></span>
+      Адміністратор системи
+    </div>
+  </div>
+</div>
 
                 {/* БЛОК КЕРУВАННЯ СТАТУСОМ РОБОТИ ДЛЯ ПРАЦІВНИКА */}
                 <div style={{ background: '#f8fafc', padding: '1.25rem', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '1.5rem' }}>
