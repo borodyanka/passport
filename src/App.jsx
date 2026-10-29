@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { 
   CalendarDays, Clock3, Bell, ShieldCheck, ListOrdered, ArrowRight, 
   RefreshCw, Send, CalendarCheck, Users, LogIn, LogOut, ExternalLink, 
-  AlertTriangle, Trash2, Search, Download, CheckCircle2, UserCheck, XCircle
+  AlertTriangle, Trash2, Search, Download, RotateCcw
 } from 'lucide-react';
 import { SERVICES, OFFICE, STATUS_LABELS } from './config.js';
 
@@ -226,7 +226,7 @@ export default function App() {
     if (!session?.access_token) { setError('Сесія завершилася. Увійдіть ще раз.'); return; }
     try {
       const result = await invoke(STAFF_ACTION_URL, { id, action }, session.access_token);
-      setMessage(result.message || 'Статус оновлено.');
+      setMessage(result.message || (action === 'restore' ? 'Запис відновлено в чергу.' : 'Статус оновлено.'));
       await Promise.all([loadStaffQueue(staffDate), loadPublicQueue(staffDate)]);
     } catch (e) { setError(e.message); }
   }
@@ -244,7 +244,6 @@ export default function App() {
     }
   }
 
-  // Експорт таблиці в CSV (Excel)
   const exportToCSV = () => {
     if (staffQueue.length === 0) {
       alert('Немає записів для експорту на цю дату.');
@@ -275,7 +274,6 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  // Статистика дня для кабінету працівника
   const stats = useMemo(() => {
     const total = staffQueue.length;
     const waiting = staffQueue.filter(i => i.status === 'waiting').length;
@@ -285,7 +283,6 @@ export default function App() {
     return { total, waiting, serving, completed, cancelled };
   }, [staffQueue]);
 
-  // Фільтрація та пошук
   const displayedStaffQueue = useMemo(() => {
     return staffQueue.filter(item => {
       const matchStatus = statusFilter === 'all' || item.status === statusFilter;
@@ -627,9 +624,22 @@ export default function App() {
                           <small>Створено: {new Date(item.created_at).toLocaleString('uk-UA')}</small>
                         </div>
                         <div className="actions">
+                          {/* Дії для записів, що очікують або в процесі */}
                           <button disabled={item.status !== 'waiting'} onClick={() => staffAction(item.id, 'call')}>Викликати</button>
                           <button disabled={item.status !== 'serving'} onClick={() => staffAction(item.id, 'complete')}>Завершити</button>
                           <button className="cancel-action" disabled={['completed', 'cancelled'].includes(item.status)} onClick={() => staffAction(item.id, 'cancel')}>Скасувати</button>
+                          
+                          {/* Кнопка відновлення для помилково скасованих або завершених */}
+                          {['completed', 'cancelled'].includes(item.status) && (
+                            <button 
+                              style={{ background: '#dcfce7', color: '#15803d' }} 
+                              onClick={() => staffAction(item.id, 'restore')} 
+                              title="Повернути запис у чергу очікування"
+                            >
+                              <RotateCcw size={13} style={{ verticalAlign: 'middle', marginRight: '3px' }} /> Відновити в чергу
+                            </button>
+                          )}
+
                           <button className="cancel-action" style={{ background: '#fee2e2', color: '#dc2626' }} onClick={() => deleteAppointment(item.id)} title="Безповоротно видалити з бази">
                             <Trash2 size={13} style={{ verticalAlign: 'middle', marginRight: '3px' }} /> Видалити
                           </button>
