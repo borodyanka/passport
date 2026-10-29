@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { 
   CalendarDays, Clock3, Bell, ShieldCheck, ListOrdered, ArrowRight, 
   RefreshCw, Send, CalendarCheck, Users, LogIn, LogOut, ExternalLink, 
-  AlertTriangle, Trash2, Search, Download, RotateCcw
+  AlertTriangle, Trash2, Search, Download, RotateCcw, Siren, ShieldAlert
 } from 'lucide-react';
 import { SERVICES, OFFICE, STATUS_LABELS } from './config.js';
 
@@ -96,16 +96,17 @@ export default function App() {
     }
   }, []);
 
-  const updateDayStatus = async (isWorking) => {
-    if (!isWorking && !statusReasonInput.trim()) {
-      setError('Вкажіть причину зупинки роботи (напр., "Не працює сервер").');
+  const updateDayStatus = async (isWorking, presetReason = null) => {
+    const reasonToSave = presetReason !== null ? presetReason : statusReasonInput.trim();
+    if (!isWorking && !reasonToSave) {
+      setError('Вкажіть причину зупинки роботи.');
       return;
     }
     setError(''); setMessage(''); setStatusLoading(true);
     const { error: dbError } = await supabase.from('system_status').upsert({
       date: staffDate,
       is_working: isWorking,
-      reason: isWorking ? null : statusReasonInput.trim(),
+      reason: isWorking ? null : reasonToSave,
       updated_at: new Date().toISOString()
     }, { onConflict: 'date' });
     
@@ -113,7 +114,7 @@ export default function App() {
     if (dbError) {
       setError('Помилка оновлення статусу: ' + dbError.message);
     } else {
-      setMessage(isWorking ? 'Прийом відновлено.' : 'Прийом зупинено. Сповіщення на сайті оновлено.');
+      setMessage(isWorking ? 'Прийом відновлено.' : 'Прийом призупинено. Червоний банер активовано.');
       loadDayStatus(staffDate);
     }
   };
@@ -299,6 +300,8 @@ export default function App() {
   const filteredQueue = useMemo(() => publicQueue.filter(item => item.status !== 'cancelled'), [publicQueue]);
   const displayTime = (item) => item.booking_type === 'live' ? 'Жива черга' : (item.appointment_time ? item.appointment_time.slice(0, 5) : 'Час не вказано');
 
+  const isAirAlertActive = !dayStatus.isWorking && dayStatus.reason?.toLowerCase().includes('тривог');
+
   return (
     <div className="page">
       <header className="header">
@@ -308,6 +311,19 @@ export default function App() {
         </div>
         <div className="online"><span /> Онлайн-запис</div>
       </header>
+
+      {/* ВЕЛИКИЙ ЧЕРВОНИЙ БАНЕР БЕЗПЕКИ ПРИ ТРИВОЗІ */}
+      {isAirAlertActive && (
+        <div className="air-alert-banner">
+          <div className="air-alert-content">
+            <ShieldAlert size={36} className="air-alert-icon" />
+            <div>
+              <h3>УВАГА! ПОВІТРЯНА ТРИВОГА В БОРОДЯНСЬКІЙ ГРОМАДІ</h3>
+              <p>Прийом громадян та реєстрацію в чергу тимчасово призупинено. Всі працівники та відвідувачі повинні негайно пройти в укриття!</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main>
         <section className="hero">
@@ -333,12 +349,12 @@ export default function App() {
             </div>
 
             {!dayStatus.isWorking && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '1.25rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
-                <h4 style={{ margin: '0 0 0.5rem 0', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <AlertTriangle size={20} /> Запис на {formatDate(form.visit_date)} тимчасово призупинено
+              <div className={`status-warning-box ${isAirAlertActive ? 'alert-danger-box' : ''}`}>
+                <h4 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <AlertTriangle size={20} /> Запис на {formatDate(form.visit_date)} призупинено
                 </h4>
-                <p style={{ margin: '0', color: '#991b1b' }}><strong>Причина:</strong> {dayStatus.reason}</p>
-                <p style={{ margin: '0.5rem 0 0 0', color: '#7f1d1d', fontSize: '0.9rem' }}>Будь ласка, оберіть іншу дату або зачекайте на відновлення роботи системи.</p>
+                <p style={{ margin: '0' }}><strong>Причина:</strong> {dayStatus.reason}</p>
+                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>Будь ласка, оберіть іншу дату або зачекайте на відновлення роботи кабінету.</p>
               </div>
             )}
 
@@ -385,7 +401,7 @@ export default function App() {
                   <Bell size={20} /> Обов'язкове підключення сповіщень
                 </h4>
                 <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.95rem', color: '#0c4a6e', lineHeight: '1.5' }}>
-                  Щоб ми могли надіслати вам номер черги та сповістити про зміну розкладу (напр., раптове відключення систем), <strong>необхідно підключити нашого Telegram-бота</strong>.<br/><br/>
+                  Щоб ми могли надіслати вам номер черги та сповістити про зміну розкладу (напр., початок тривоги або перенесення прийому), <strong>необхідно підключити нашого Telegram-бота</strong>.<br/><br/>
                   1. Натисніть кнопку нижче, щоб відкрити бота.<br/>
                   2. Натисніть <strong>Розпочати (або /start)</strong> у боті.<br/>
                   3. Бот надішле вам одноразовий код — скопіюйте його у форму нижче разом із вашим Username.
@@ -531,16 +547,29 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* БЛОК КЕРУВАННЯ СТАТУСОМ РОБОТИ ДЛЯ ПРАЦІВНИКА */}
-                <div style={{ background: '#f8fafc', padding: '1.25rem', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '1.5rem' }}>
-                  <h4 style={{ margin: '0 0 0.75rem 0', color: '#334155' }}>
-                    Статус прийому на {formatDate(staffDate)}
-                  </h4>
+                {/* БЛОК КЕРУВАННЯ СТАТУСОМ ТА БЕЗПЕКОЮ */}
+                <div style={{ background: '#f8fafc', padding: '1.25rem', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <h4 style={{ margin: 0, color: '#334155' }}>
+                      Статус прийому на {formatDate(staffDate)}
+                    </h4>
+                    {dayStatus.isWorking && (
+                      <button 
+                        type="button" 
+                        onClick={() => updateDayStatus(false, 'Повітряна тривога в Бородянській громаді')}
+                        className="cancel-action"
+                        style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+                      >
+                        <Siren size={14} /> Оголосити тривогу (зупинити прийом)
+                      </button>
+                    )}
+                  </div>
+
                   <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                     <div style={{ flex: '1 1 300px' }}>
                       <input 
                         type="text" 
-                        placeholder="Вкажіть причину, якщо зупиняєте прийом (напр., не працює система)" 
+                        placeholder="Вкажіть причину зупинки (напр., Повітряна тривога або Технічні роботи)" 
                         value={statusReasonInput} 
                         onChange={(e) => setStatusReasonInput(e.target.value)} 
                         style={{ width: '100%', marginBottom: 0 }}
@@ -552,13 +581,13 @@ export default function App() {
                       </button>
                     ) : (
                       <button className="primary" onClick={() => updateDayStatus(true)} disabled={statusLoading}>
-                        Відновити прийом
+                        Відновити прийом (Відбій)
                       </button>
                     )}
                   </div>
                   {!dayStatus.isWorking && (
                     <div style={{ marginTop: '0.75rem', color: '#b91c1c', fontSize: '0.9rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <AlertTriangle size={16} /> Прийом зупинено. Користувачі не можуть записатися.
+                      <AlertTriangle size={16} /> Прийом зупинено ({dayStatus.reason}). Користувачі бачать банер безпеки.
                     </div>
                   )}
                 </div>
@@ -624,12 +653,10 @@ export default function App() {
                           <small>Створено: {new Date(item.created_at).toLocaleString('uk-UA')}</small>
                         </div>
                         <div className="actions">
-                          {/* Дії для записів, що очікують або в процесі */}
                           <button disabled={item.status !== 'waiting'} onClick={() => staffAction(item.id, 'call')}>Викликати</button>
                           <button disabled={item.status !== 'serving'} onClick={() => staffAction(item.id, 'complete')}>Завершити</button>
                           <button className="cancel-action" disabled={['completed', 'cancelled'].includes(item.status)} onClick={() => staffAction(item.id, 'cancel')}>Скасувати</button>
                           
-                          {/* Кнопка відновлення для помилково скасованих або завершених */}
                           {['completed', 'cancelled'].includes(item.status) && (
                             <button 
                               style={{ background: '#dcfce7', color: '#15803d' }} 
@@ -653,18 +680,33 @@ export default function App() {
           </section>
         )}
 
-        <section className="info-grid">
-          <article className="info-card">
-            <Clock3 />
-            <h4>Графік роботи</h4>
-            <p>{OFFICE.hours}</p>
-            {OFFICE.daysOff && <small style={{ display: 'block', marginTop: '6px', color: '#64748b' }}>{OFFICE.daysOff}</small>}
-          </article>
-          <article className="info-card">
-            <Bell />
-            <h4>Сповіщення Telegram</h4>
-            <p>Підтвердження запису, повідомлення працівнику про новий запис і повідомлення відвідувачу під час виклику.</p>
-          </article>
+        {/* НИЖНЯ ПАНЕЛЬ: ГРАФІК, СПОВІЩЕННЯ ТА ВІДЖЕТ ПОВІТРЯНОЇ ТРИВОГИ */}
+        <section className="info-grid-with-alert">
+          <div className="info-grid">
+            <article className="info-card">
+              <Clock3 />
+              <h4>Графік роботи</h4>
+              <p>{OFFICE.hours}</p>
+              {OFFICE.daysOff && <small style={{ display: 'block', marginTop: '6px', color: '#64748b' }}>{OFFICE.daysOff}</small>}
+            </article>
+            <article className="info-card">
+              <Bell />
+              <h4>Сповіщення Telegram</h4>
+              <p>Підтвердження запису, повідомлення працівнику про новий запис і повідомлення відвідувачу під час виклику.</p>
+            </article>
+          </div>
+
+          {/* ВІДЖЕТ ПОВІТРЯНОЇ ТРИВОГИ */}
+          <div className="alert-widget-container">
+            <iframe 
+              src="https://alerts.na-agency.com/widget?region=700&amp;type=stats&amp;theme=light" 
+              width="360" 
+              height="330" 
+              title="Повітряна тривога Бородянська громада" 
+              loading="lazy" 
+              style={{ border: 0, maxWidth: '100%', borderRadius: '14px', colorScheme: 'normal' }}
+            />
+          </div>
         </section>
 
       </main>
