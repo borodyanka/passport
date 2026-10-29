@@ -327,12 +327,33 @@ export default function App() {
 
       <main>
         <section className="hero">
-          <div>
+          <div className="hero-text">
             <div className="hero-kicker">ЗРУЧНО · ПРОЗОРО · У ЗРУЧНИЙ ЧАС</div>
             <h2>Запишіться на прийом<br />у кілька кроків</h2>
             <p>Оберіть послугу, дату та доступний час або скористайтеся живою чергою. Telegram допоможе отримати підтвердження та сповіщення.</p>
           </div>
-          <div className="hero-art"><CalendarCheck size={48} /><span>2026</span></div>
+          
+          {/* ВІДЖЕТ ПОВІТРЯНОЇ ТРИВОГИ В ШАПЦІ ЗАМІСТЬ ЗНАЧКА */}
+          <div className="hero-widget-box">
+            <iframe 
+              src="https://alerts.na-agency.com/widget?region=700&amp;type=card&amp;theme=light" 
+              width="300" 
+              height="190" 
+              title="Повітряна тривога Бородянська громада" 
+              loading="lazy" 
+              style={{ border: 0, width: '300px', height: '190px', maxWidth: '100%', borderRadius: '14px', colorScheme: 'normal' }}
+            />
+            <p style={{ margin: '4px 0 0', font: '11px/1.4 sans-serif', textAlign: 'center' }}>
+              <a 
+                href="https://alerts.na-agency.com/region/700-borodianska-terytorialna-hromada" 
+                target="_blank" 
+                rel="noreferrer"
+                style={{ color: '#d5e9fa', textDecoration: 'none' }}
+              >
+                Повітряна тривога Бородянська громада
+              </a>
+            </p>
+          </div>
         </section>
 
         <nav className="tabs" aria-label="Розділи">
@@ -680,33 +701,19 @@ export default function App() {
           </section>
         )}
 
-        {/* НИЖНЯ ПАНЕЛЬ: ГРАФІК, СПОВІЩЕННЯ ТА ВІДЖЕТ ПОВІТРЯНОЇ ТРИВОГИ */}
-        <section className="info-grid-with-alert">
-          <div className="info-grid">
-            <article className="info-card">
-              <Clock3 />
-              <h4>Графік роботи</h4>
-              <p>{OFFICE.hours}</p>
-              {OFFICE.daysOff && <small style={{ display: 'block', marginTop: '6px', color: '#64748b' }}>{OFFICE.daysOff}</small>}
-            </article>
-            <article className="info-card">
-              <Bell />
-              <h4>Сповіщення Telegram</h4>
-              <p>Підтвердження запису, повідомлення працівнику про новий запис і повідомлення відвідувачу під час виклику.</p>
-            </article>
-          </div>
-
-          {/* ВІДЖЕТ ПОВІТРЯНОЇ ТРИВОГИ */}
-          <div className="alert-widget-container">
-            <iframe 
-              src="https://alerts.na-agency.com/widget?region=700&amp;type=stats&amp;theme=light" 
-              width="360" 
-              height="330" 
-              title="Повітряна тривога Бородянська громада" 
-              loading="lazy" 
-              style={{ border: 0, maxWidth: '100%', borderRadius: '14px', colorScheme: 'normal' }}
-            />
-          </div>
+        {/* НИЖНЯ ПАНЕЛЬ: ГРАФІК ТА СПОВІЩЕННЯ (БЕЗ ВІДЖЕТА) */}
+        <section className="info-grid">
+          <article className="info-card">
+            <Clock3 />
+            <h4>Графік роботи</h4>
+            <p>{OFFICE.hours}</p>
+            {OFFICE.daysOff && <small style={{ display: 'block', marginTop: '6px', color: '#64748b' }}>{OFFICE.daysOff}</small>}
+          </article>
+          <article className="info-card">
+            <Bell />
+            <h4>Сповіщення Telegram</h4>
+            <p>Підтвердження запису, повідомлення працівнику про новий запис і повідомлення відвідувачу під час виклику.</p>
+          </article>
         </section>
 
       </main>
