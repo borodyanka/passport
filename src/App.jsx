@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { CalendarDays, Clock3, Bell, ShieldCheck, ListOrdered, ArrowRight, RefreshCw, Send, CalendarCheck, Users, Info, LogIn, LogOut, ExternalLink, AlertTriangle, Trash2 } from 'lucide-react';
+import { 
+  CalendarDays, Clock3, Bell, ShieldCheck, ListOrdered, ArrowRight, 
+  RefreshCw, Send, CalendarCheck, Users, LogIn, LogOut, ExternalLink, 
+  AlertTriangle, Trash2, Search, Download, CheckCircle2, UserCheck, XCircle
+} from 'lucide-react';
 import { SERVICES, OFFICE, STATUS_LABELS } from './config.js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -36,6 +40,10 @@ export default function App() {
   const [staffQueue, setStaffQueue] = useState([]);
   const [staffDate, setStaffDate] = useState(kyivDate());
   
+  // Фільтри та пошук для працівника
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
   // Дані працівника
   const [staffProfile, setStaffProfile] = useState({
     name: 'Очеретяний Ярослав Романович',
@@ -158,7 +166,6 @@ export default function App() {
       loadStaffQueue();
       loadDayStatus(staffDate);
 
-      // Завантаження профілю працівника
       if (session?.user?.id) {
         supabase
           .from('staff')
@@ -236,6 +243,61 @@ export default function App() {
       setError('Не вдалося видалити запис: ' + e.message);
     }
   }
+
+  // Експорт таблиці в CSV (Excel)
+  const exportToCSV = () => {
+    if (staffQueue.length === 0) {
+      alert('Немає записів для експорту на цю дату.');
+      return;
+    }
+    const headers = ['Номер', 'ПІБ', 'Телефон', 'Telegram', 'Послуга', 'Формат', 'Час', 'Статус', 'Коментар', 'Дата запису'];
+    const rows = staffQueue.map(item => [
+      item.queue_number,
+      `"${item.full_name || ''}"`,
+      `"${item.phone || ''}"`,
+      `"${item.telegram_username ? '@' + item.telegram_username : ''}"`,
+      `"${item.service || ''}"`,
+      item.booking_type === 'live' ? 'Жива черга' : 'Попередній запис',
+      item.appointment_time ? item.appointment_time.slice(0, 5) : '—',
+      STATUS_LABELS[item.status] || item.status,
+      `"${(item.notes || '').replace(/"/g, '""')}"`,
+      new Date(item.created_at).toLocaleString('uk-UA')
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Черга_${staffDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Статистика дня для кабінету працівника
+  const stats = useMemo(() => {
+    const total = staffQueue.length;
+    const waiting = staffQueue.filter(i => i.status === 'waiting').length;
+    const serving = staffQueue.filter(i => i.status === 'serving').length;
+    const completed = staffQueue.filter(i => i.status === 'completed').length;
+    const cancelled = staffQueue.filter(i => i.status === 'cancelled').length;
+    return { total, waiting, serving, completed, cancelled };
+  }, [staffQueue]);
+
+  // Фільтрація та пошук
+  const displayedStaffQueue = useMemo(() => {
+    return staffQueue.filter(item => {
+      const matchStatus = statusFilter === 'all' || item.status === statusFilter;
+      const q = searchQuery.toLowerCase().trim();
+      const matchSearch = !q || 
+        item.full_name.toLowerCase().includes(q) ||
+        item.phone.includes(q) ||
+        String(item.queue_number).includes(q) ||
+        (item.notes && item.notes.toLowerCase().includes(q));
+      return matchStatus && matchSearch;
+    });
+  }, [staffQueue, statusFilter, searchQuery]);
 
   const filteredQueue = useMemo(() => publicQueue.filter(item => item.status !== 'cancelled'), [publicQueue]);
   const displayTime = (item) => item.booking_type === 'live' ? 'Жива черга' : (item.appointment_time ? item.appointment_time.slice(0, 5) : 'Час не вказано');
@@ -443,9 +505,32 @@ export default function App() {
                     <button className="icon-button" onClick={() => { loadStaffQueue(staffDate); loadDayStatus(staffDate); }} aria-label="Оновити список">
                       <RefreshCw size={15} /> Оновити
                     </button>
+                    <button className="icon-button" onClick={exportToCSV} aria-label="Експорт в Excel" title="Завантажити звіт дня у CSV (Excel)">
+                      <Download size={15} /> Експорт (Excel)
+                    </button>
                     <button className="quiet-button" onClick={handleSignOut} aria-label="Вийти з кабінету">
                       <LogOut size={15} /> Вийти
                     </button>
+                  </div>
+                </div>
+
+                {/* КАРТКИ СТАТИСТИКИ ДНЯ */}
+                <div className="staff-stats-grid">
+                  <div className="stat-card">
+                    <span className="stat-label">Усього талонів</span>
+                    <strong className="stat-value">{stats.total}</strong>
+                  </div>
+                  <div className="stat-card stat-waiting">
+                    <span className="stat-label">Очікують прийому</span>
+                    <strong className="stat-value">{stats.waiting}</strong>
+                  </div>
+                  <div className="stat-card stat-serving">
+                    <span className="stat-label">Зараз на прийомі</span>
+                    <strong className="stat-value">{stats.serving}</strong>
+                  </div>
+                  <div className="stat-card stat-completed">
+                    <span className="stat-label">Обслуговано</span>
+                    <strong className="stat-value">{stats.completed}</strong>
                   </div>
                 </div>
 
@@ -481,19 +566,59 @@ export default function App() {
                   )}
                 </div>
 
+                {/* БАР ПОШУКУ ТА ШВИДКИХ ФІЛЬТРІВ */}
+                <div className="staff-filter-bar">
+                  <div className="search-box">
+                    <Search size={16} className="search-icon" />
+                    <input 
+                      type="text"
+                      placeholder="Швидкий пошук за ПІБ, телефоном або номером..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {searchQuery && (
+                      <button className="clear-search" onClick={() => setSearchQuery('')}>×</button>
+                    )}
+                  </div>
+
+                  <div className="filter-chips">
+                    <button className={statusFilter === 'all' ? 'active' : ''} onClick={() => setStatusFilter('all')}>
+                      Усі ({stats.total})
+                    </button>
+                    <button className={statusFilter === 'waiting' ? 'active' : ''} onClick={() => setStatusFilter('waiting')}>
+                      Очікують ({stats.waiting})
+                    </button>
+                    <button className={statusFilter === 'serving' ? 'active' : ''} onClick={() => setStatusFilter('serving')}>
+                      На прийомі ({stats.serving})
+                    </button>
+                    <button className={statusFilter === 'completed' ? 'active' : ''} onClick={() => setStatusFilter('completed')}>
+                      Завершені ({stats.completed})
+                    </button>
+                    <button className={statusFilter === 'cancelled' ? 'active' : ''} onClick={() => setStatusFilter('cancelled')}>
+                      Скасовані ({stats.cancelled})
+                    </button>
+                  </div>
+                </div>
+
                 {error && <div className="alert error">{error}</div>}
                 {message && <div className="alert success">{message}</div>}
                 
                 {staffLoading ? (
                   <div className="empty">Завантаження черги…</div>
-                ) : staffQueue.length === 0 ? (
-                  <div className="empty"><Users size={26} /><p>На цю дату немає записів.</p></div>
+                ) : displayedStaffQueue.length === 0 ? (
+                  <div className="empty">
+                    <Users size={26} />
+                    <p>{searchQuery || statusFilter !== 'all' ? 'За обраними фільтрами записів не знайдено.' : 'На цю дату немає записів.'}</p>
+                  </div>
                 ) : (
                   <div className="staff-list">
-                    {staffQueue.map(item => (
+                    {displayedStaffQueue.map(item => (
                       <article className="staff-row" key={item.id}>
                         <div className="staff-details">
-                          <div className="staff-title"><b>№ {item.queue_number} · {item.full_name}</b><span className={`status ${item.status}`}>{STATUS_LABELS[item.status] || item.status}</span></div>
+                          <div className="staff-title">
+                            <b>№ {item.queue_number} · {item.full_name}</b>
+                            <span className={`status ${item.status}`}>{STATUS_LABELS[item.status] || item.status}</span>
+                          </div>
                           <p><strong>{item.service}</strong> · {item.booking_type === 'live' ? 'Жива черга' : `Час ${String(item.appointment_time || '').slice(0, 5)}`}</p>
                           <p>Телефон: <a href={`tel:${item.phone}`}>{item.phone}</a></p>
                           {item.telegram_username && <p>Telegram username: @{item.telegram_username}</p>}
